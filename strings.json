@@ -1,0 +1,25 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect UniFi Protect Zone Tracking",
+        "description": "A second, independent connection to the same Protect NVR as the official UniFi Protect integration - used only to derive the zone order of each smart-detect event.",
+        "data": {
+          "host": "Host / IP address",
+          "port": "Port",
+          "username": "Username",
+          "password": "Password",
+          "verify_ssl": "Verify SSL certificate"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Failed to authenticate. Check username/password.",
+      "cannot_connect": "Failed to connect to the Protect NVR.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This Protect NVR is already configured."
+    }
+  }
+}
