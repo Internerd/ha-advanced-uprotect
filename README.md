@@ -1,5 +1,8 @@
 # UniFi Protect Zone Tracking
 
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Custom Home Assistant integration that connects to a UniFi Protect NVR
 *in addition to* the official core `unifiprotect` integration, purely to
 expose one piece of data the core integration does not: **which Smart
@@ -48,10 +51,36 @@ against `uiprotect` 15.14.2) - only *which* line was crossed. `lines_crossed`
 therefore lists the line(s) touched, but not the direction. If UniFi later
 exposes that, `hub.py` is the only place that needs updating.
 
+## Installation
+
+### Via HACS
+
+This integration is not (yet) part of the HACS default store, so add it as a
+custom repository:
+
+1. HACS → the three-dot menu (top right) → **Custom repositories**.
+2. Repository: `https://github.com/Internerd/ha-advanced-uprotect`,
+   category: **Integration**.
+3. Find "UniFi Protect Zone Tracking" in HACS and install it.
+4. Restart Home Assistant.
+
+### Manual / Git
+
+1. Clone this repository, or download and unpack it, and copy the
+   `custom_components/unifiprotect_zones` folder into your Home Assistant
+   `config/custom_components/` folder:
+
+   ```bash
+   git clone https://github.com/Internerd/ha-advanced-uprotect.git
+   cp -r ha-advanced-uprotect/custom_components/unifiprotect_zones \
+      <path-to-your-ha-config>/custom_components/
+   ```
+
+2. Restart Home Assistant.
+
 ## Setup
 
-1. Copy `custom_components/unifiprotect_zones` into your Home Assistant
-   `config/custom_components/` folder and restart Home Assistant.
+1. Complete one of the installation steps above.
 2. Settings → Devices & Services → Add Integration → "UniFi Protect Zone
    Tracking".
 3. Enter the same NVR host, a Protect local user (a dedicated read-only
@@ -63,4 +92,21 @@ exposes that, `hub.py` is the only place that needs updating.
    reports on zones that already exist there.
 
 Requires the `uiprotect` Python package (installed automatically from
-`manifest.json`).
+`manifest.json`). The config flow and error messages are available in
+English and German (`custom_components/unifiprotect_zones/translations/`).
+
+## About this project
+
+- **License**: [MIT](LICENSE) - see the `LICENSE` file for the full text.
+- **AI-assisted development**: This integration was developed with the
+  assistance of an AI coding assistant (Claude). Review the code yourself
+  before relying on it, especially around authentication and network
+  access.
+- **Disclaimer**: This is an unofficial, community project and is not
+  affiliated with, endorsed by, or supported by Ubiquiti Inc. or the Home
+  Assistant project. "UniFi" and "UniFi Protect" are trademarks of Ubiquiti
+  Inc. Provided "as is", without warranty of any kind - see the
+  [LICENSE](LICENSE) for details.
+- **Issues / contributions**: Please use the
+  [issue tracker](https://github.com/Internerd/ha-advanced-uprotect/issues)
+  for bugs and feature requests. Pull requests are welcome.
