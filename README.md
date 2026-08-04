@@ -50,15 +50,22 @@ exposes that, `hub.py` is the only place that needs updating.
 
 ## Setup
 
-1. Copy `custom_components/unifiprotect_zones` into your Home Assistant
-   `config/custom_components/` folder and restart Home Assistant.
-2. Settings → Devices & Services → Add Integration → "UniFi Protect Zone
+**Via HACS:** HACS → Integrations → ⋮ → Custom repositories → add this repo
+URL as an "Integration" → install "UniFi Protect Zone Tracking" → restart
+Home Assistant.
+
+**Manually:** copy `custom_components/unifiprotect_zones` into your Home
+Assistant `config/custom_components/` folder and restart Home Assistant.
+
+Then:
+
+1. Settings → Devices & Services → Add Integration → "UniFi Protect Zone
    Tracking".
-3. Enter the same NVR host, a Protect local user (a dedicated read-only
+2. Enter the same NVR host, a Protect local user (a dedicated read-only
    local account is recommended over reusing the account the core
    integration uses), and whether to verify the NVR's SSL certificate
    (off by default for the typical self-signed local cert).
-4. Configure Smart Detection Zones on the cameras you care about inside
+3. Configure Smart Detection Zones on the cameras you care about inside
    the Protect app itself, if you haven't already - this integration only
    reports on zones that already exist there.
 
