@@ -3,6 +3,11 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+*Inoffizielles, von der Community betriebenes Projekt. Keine Verbindung zu,
+keine Unterstützung durch und keine Freigabe durch Ubiquiti Inc. "UniFi" und
+"UniFi Protect" sind Marken von Ubiquiti Inc. - siehe
+[Disclaimer](#about-this-project).*
+
 Custom Home Assistant integration that connects to a UniFi Protect NVR
 *in addition to* the official core `unifiprotect` integration, purely to
 expose one piece of data the core integration does not: **which Smart
@@ -39,7 +44,7 @@ finished smart-detect event with these attributes:
 | `event_id`      | The Protect event id, for cross-referencing                            |
 
 Use it in an automation trigger like any other `event` entity, e.g.
-trigger on `event.einfahrt_zone_activity` and read
+trigger on `event.driveway_zone_activity` and read
 `trigger.event.data.from_zone` / `to_zone` in the action.
 
 ## Known limitation
@@ -83,11 +88,11 @@ custom repository:
 1. Complete one of the installation steps above.
 2. Settings → Devices & Services → Add Integration → "UniFi Protect Zone
    Tracking".
-2. Enter the same NVR host, a Protect local user (a dedicated read-only
+3. Enter the same NVR host, a Protect local user (a dedicated read-only
    local account is recommended over reusing the account the core
    integration uses), and whether to verify the NVR's SSL certificate
    (off by default for the typical self-signed local cert).
-3. Configure Smart Detection Zones on the cameras you care about inside
+4. Configure Smart Detection Zones on the cameras you care about inside
    the Protect app itself, if you haven't already - this integration only
    reports on zones that already exist there.
 
@@ -98,15 +103,37 @@ English and German (`custom_components/unifiprotect_zones/translations/`).
 ## About this project
 
 - **License**: [MIT](LICENSE) - see the `LICENSE` file for the full text.
+  All source code in this repository was written for this project; nothing
+  is copied from the Home Assistant core `unifiprotect` integration or any
+  other project.
+- **Built on**: this integration is a thin Home Assistant wrapper around
+  [`uiprotect`](https://github.com/uilibs/uiprotect) ([PyPI](https://pypi.org/project/uiprotect/),
+  MIT licensed), the community-maintained Python client for the UniFi
+  Protect local API. It does all the actual talking to the NVR; this repo
+  only adds zone-path derivation and the Home Assistant entities. It is
+  declared as a normal dependency in `manifest.json` and installed
+  automatically by Home Assistant - it is not vendored or modified here.
 - **AI-assisted development**: This integration was developed with the
-  assistance of an AI coding assistant (Claude). Review the code yourself
-  before relying on it, especially around authentication and network
-  access.
+  assistance of an AI coding assistant (Claude, Anthropic). A human
+  reviewed, tested (via `py_compile` and manual verification of every
+  `uiprotect` API call used against the installed library source), and
+  takes responsibility for the published code. Review it yourself before
+  relying on it, especially around authentication and network access. This
+  is disclosed for transparency; it is not a substitute for your own code
+  review, and none of the above is legal advice.
+- **Security & privacy**: This integration only talks to the local Protect
+  NVR you configure - there is no cloud service, telemetry, or third-party
+  data transfer involved. Credentials are stored exactly like every other
+  Home Assistant integration's config entry (in Home Assistant's local
+  `.storage` directory - protect that directory the same way you already
+  protect the rest of your Home Assistant config) and are never logged.
+  Using a dedicated, read-only local Protect account instead of your admin
+  account is recommended (see Setup below).
 - **Disclaimer**: This is an unofficial, community project and is not
   affiliated with, endorsed by, or supported by Ubiquiti Inc. or the Home
   Assistant project. "UniFi" and "UniFi Protect" are trademarks of Ubiquiti
-  Inc. Provided "as is", without warranty of any kind - see the
-  [LICENSE](LICENSE) for details.
+  Inc., used here only to describe compatibility. Provided "as is", without
+  warranty of any kind - see the [LICENSE](LICENSE) for details.
 - **Issues / contributions**: Please use the
   [issue tracker](https://github.com/Internerd/ha-advanced-uprotect/issues)
   for bugs and feature requests. Pull requests are welcome.
