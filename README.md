@@ -2,16 +2,16 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Validate](https://github.com/Internerd/ha-advanced-uprotect/actions/workflows/validate.yml/badge.svg)](https://github.com/Internerd/ha-advanced-uprotect/actions/workflows/validate.yml)
 
-*Inoffizielles, von der Community betriebenes Projekt. Keine Verbindung zu,
-keine Unterstützung durch und keine Freigabe durch Ubiquiti Inc. "UniFi" und
-"UniFi Protect" sind Marken von Ubiquiti Inc. - siehe
-[Disclaimer](#about-this-project).*
+*Unofficial, community-run project. Not affiliated with, supported by, or
+endorsed by Ubiquiti Inc. "UniFi" and "UniFi Protect" are trademarks of
+Ubiquiti Inc. - see the [Disclaimer](#disclaimer).*
 
 Custom Home Assistant integration that connects to a UniFi Protect NVR
 *in addition to* the official core `unifiprotect` integration, purely to
-expose one piece of data the core integration does not: **which Smart
-Detection Zone(s) a person/vehicle/animal moved through during a single
+expose data the core integration does not: **which Smart Detection Zone(s)
+a person, vehicle, animal or license plate moved through during a single
 detection event, in order.**
 
 ## Why a separate integration
@@ -29,23 +29,101 @@ camera's configured zones.
 
 ## What you get
 
-For every camera that has at least one Smart Detection Zone configured, a
-`event.<camera>_zone_activity` entity is created. It fires once per
-finished smart-detect event with these attributes:
+### One event entity per camera
 
-| Attribute       | Meaning                                                                 |
-|-----------------|--------------------------------------------------------------------------|
-| `zone_path`     | Ordered, de-duplicated list of zone name(s) the object was in, step by step |
-| `from_zone`     | First entry in `zone_path`                                             |
-| `to_zone`       | Last entry in `zone_path`                                              |
-| `lines_crossed` | Any line-crossing zones the object's track touched                      |
-| `object_type`   | `person`, `vehicle`, `animal`, ...                                      |
-| `score`         | Protect's detection confidence score                                   |
-| `event_id`      | The Protect event id, for cross-referencing                            |
+For every camera that has at least one Smart Detection Zone (or line
+crossing) configured, `event.<camera>_zone_activity` fires once per finished
+smart-detect event that touched a zone or a line, with these attributes:
+
+| Attribute        | Meaning                                                                    |
+|------------------|----------------------------------------------------------------------------|
+| `zone_path`      | Ordered, de-duplicated list of zone name(s) the object was in, step by step |
+| `zones`          | Every zone the object touched, in the order it first entered them          |
+| `from_zone`      | First entry in `zone_path`                                                 |
+| `to_zone`        | Last entry in `zone_path`                                                  |
+| `lines_crossed`  | Any line-crossing zones the object's track touched                         |
+| `object_type`    | `person`, `vehicle`, `animal`, `licensePlate`, ...                         |
+| `object_types`   | Every object type seen during the event                                    |
+| `license_plates` | Any license plate text read during the event                               |
+| `score`          | Protect's detection confidence score                                       |
+| `event_id`       | The Protect event id, for cross-referencing                                |
 
 Use it in an automation trigger like any other `event` entity, e.g.
 trigger on `event.driveway_zone_activity` and read
 `trigger.event.data.from_zone` / `to_zone` in the action.
+
+### Two extra sensors per camera
+
+The two most useful attributes are also available as plain entities, so they
+can be used in templates, dashboards and history without unpacking an event:
+
+| Entity                                     | State                                                |
+|--------------------------------------------|------------------------------------------------------|
+| `sensor.<camera>_detected_object_type`     | Object type of the most recent zone activity         |
+| `sensor.<camera>_lines_crossed`            | The line-crossing zone(s) the last track touched     |
+
+Both keep the full detail in their attributes (`object_types`, `zones`,
+`license_plates`, `lines_crossed`, `line_count`, `event_id`) and restore
+their last value across a Home Assistant restart. `lines_crossed` only
+updates on events that actually crossed a line, so a zone-only event does
+not wipe it.
+
+Protect's local API does not expose the *names* of crossing lines (only zone
+names), so lines are reported by id as `line-<id>`.
+
+### One binary sensor per camera, zone and object type
+
+For every Smart Detection Zone the integration creates up to four binary
+sensors:
+
+| Entity                                          | Turns on when                              |
+|-------------------------------------------------|--------------------------------------------|
+| `binary_sensor.<camera>_<zone>_person`          | a person was tracked inside that zone      |
+| `binary_sensor.<camera>_<zone>_vehicle`         | a vehicle was tracked inside that zone     |
+| `binary_sensor.<camera>_<zone>_animal`          | an animal was tracked inside that zone     |
+| `binary_sensor.<camera>_<zone>_license_plate`   | a license plate was read inside that zone  |
+
+They only trigger when that object type was really inside that specific zone
+during the event, which is exactly the distinction the core integration
+cannot make.
+
+A few notes on how they behave:
+
+- **Only what the zone can detect.** Protect stores which object types a zone
+  is configured for, and only those get an entity (plus license plate
+  whenever the zone detects vehicles). A zone configured for people only
+  therefore has a single entity, not four. Zones with no explicit
+  configuration get all four.
+- **They are pulses.** Protect publishes the detection track only after the
+  event has ended, so a sensor switches on when the event is processed and
+  off again after a delay you can configure (Settings → Devices & Services →
+  UniFi Protect Zone Tracking → **Configure**; 10 seconds by default).
+- **Zones added later are picked up automatically.** Add a zone in the
+  Protect app and the matching entities appear without reloading anything.
+  Renaming a zone updates the entity name after the next reload of the
+  integration.
+- **Attributes**: `zone`, `object_type`, `event_id`, `last_detected`, and
+  `license_plates` on the license plate sensors.
+
+Example automation:
+
+```yaml
+automation:
+  - alias: Car in the driveway at night
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.driveway_cam_driveway_vehicle
+        to: "on"
+    conditions:
+      - condition: sun
+        after: sunset
+    actions:
+      - action: notify.mobile_app
+        data:
+          message: >-
+            Vehicle in the driveway
+            {{ state_attr('sensor.driveway_cam_detected_object_type', 'license_plates') | join(', ') }}
+```
 
 ## Known limitation
 
@@ -55,6 +133,14 @@ in the local API data the `uiprotect` client library exposes (checked
 against `uiprotect` 15.14.2) - only *which* line was crossed. `lines_crossed`
 therefore lists the line(s) touched, but not the direction. If UniFi later
 exposes that, `hub.py` is the only place that needs updating.
+
+## Requirements
+
+- Home Assistant 2025.1.0 or newer
+- A UniFi Protect NVR reachable on the local network, with a local Protect
+  user account
+- The `uiprotect` Python package, installed automatically from
+  `manifest.json`
 
 ## Installation
 
@@ -68,6 +154,9 @@ custom repository:
    category: **Integration**.
 3. Find "UniFi Protect Zone Tracking" in HACS and install it.
 4. Restart Home Assistant.
+
+HACS offers the published releases of this repository; see
+[CHANGELOG.md](CHANGELOG.md) for what changed between versions.
 
 ### Manual / Git
 
@@ -95,10 +184,43 @@ custom repository:
 4. Configure Smart Detection Zones on the cameras you care about inside
    the Protect app itself, if you haven't already - this integration only
    reports on zones that already exist there.
+5. Optionally open **Configure** on the integration to change how long the
+   per-zone binary sensors stay on.
 
-Requires the `uiprotect` Python package (installed automatically from
-`manifest.json`). The config flow and error messages are available in
-English and German (`custom_components/unifiprotect_zones/translations/`).
+The config flow, options and entity names are available in English and
+German (`custom_components/unifiprotect_zones/translations/`).
+
+## Disclaimer
+
+**No warranty.** This software is provided "as is", without warranty of any
+kind, express or implied, including but not limited to the warranties of
+merchantability, fitness for a particular purpose and non-infringement. See
+the [LICENSE](LICENSE) for the binding text; the summary here is for
+convenience only.
+
+**No liability.** In no event shall the authors or copyright holders be
+liable for any claim, damages or other liability, whether in an action of
+contract, tort or otherwise, arising from, out of or in connection with the
+software or the use of or other dealings in the software. You use it at your
+own risk.
+
+**Not a safety system.** Detection results come from UniFi Protect's own
+smart detection and may be wrong, delayed or missing entirely - a track can
+expire before it is fetched, an object can be missed, or a zone can be
+mis-assigned. Do not rely on this integration for security-critical,
+life-safety or legally relevant purposes.
+
+**Not affiliated with Ubiquiti or Home Assistant.** This is an unofficial
+community project. It is not affiliated with, endorsed by, or supported by
+Ubiquiti Inc. or the Home Assistant project. "UniFi" and "UniFi Protect" are
+trademarks of Ubiquiti Inc., used here only to describe compatibility. Using
+this integration may not be covered by, and could conceivably affect, your
+support arrangements with Ubiquiti.
+
+**Your responsibility.** Camera footage and detection data are personal data
+in many jurisdictions. Operating cameras, recording people and processing
+detections is your responsibility, and so is complying with the law that
+applies to you. Nothing in this repository is legal advice.
 
 ## About this project
 
@@ -114,13 +236,11 @@ English and German (`custom_components/unifiprotect_zones/translations/`).
   declared as a normal dependency in `manifest.json` and installed
   automatically by Home Assistant - it is not vendored or modified here.
 - **AI-assisted development**: This integration was developed with the
-  assistance of an AI coding assistant (Claude, Anthropic). A human
-  reviewed, tested (via `py_compile` and manual verification of every
-  `uiprotect` API call used against the installed library source), and
-  takes responsibility for the published code. Review it yourself before
-  relying on it, especially around authentication and network access. This
-  is disclosed for transparency; it is not a substitute for your own code
-  review, and none of the above is legal advice.
+  assistance of an AI coding assistant. A human reviewed, tested and takes
+  responsibility for the published code. Review it yourself before relying
+  on it, especially around authentication and network access. This is
+  disclosed for transparency; it is not a substitute for your own code
+  review.
 - **Security & privacy**: This integration only talks to the local Protect
   NVR you configure - there is no cloud service, telemetry, or third-party
   data transfer involved. Credentials are stored exactly like every other
@@ -128,12 +248,7 @@ English and German (`custom_components/unifiprotect_zones/translations/`).
   `.storage` directory - protect that directory the same way you already
   protect the rest of your Home Assistant config) and are never logged.
   Using a dedicated, read-only local Protect account instead of your admin
-  account is recommended (see Setup below).
-- **Disclaimer**: This is an unofficial, community project and is not
-  affiliated with, endorsed by, or supported by Ubiquiti Inc. or the Home
-  Assistant project. "UniFi" and "UniFi Protect" are trademarks of Ubiquiti
-  Inc., used here only to describe compatibility. Provided "as is", without
-  warranty of any kind - see the [LICENSE](LICENSE) for details.
+  account is recommended (see [Setup](#setup)).
 - **Issues / contributions**: Please use the
   [issue tracker](https://github.com/Internerd/ha-advanced-uprotect/issues)
   for bugs and feature requests. Pull requests are welcome.

@@ -4,8 +4,10 @@
   "codeowners": ["@Internerd"],
   "config_flow": true,
   "documentation": "https://github.com/Internerd/ha-advanced-uprotect",
+  "integration_type": "hub",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Internerd/ha-advanced-uprotect/issues",
+  "loggers": ["uiprotect"],
   "requirements": ["uiprotect>=15.0.0"],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

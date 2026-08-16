@@ -21,5 +21,45 @@
     "abort": {
       "already_configured": "Dieser Protect-NVR ist bereits konfiguriert."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "UniFi Protect Zone Tracking - Optionen",
+        "description": "Protect liefert den Bewegungspfad erst, wenn das Event beendet ist. Die Zonen-Sensoren melden deshalb als Impuls: Sie schalten beim Verarbeiten des Events ein und nach dieser Zeit wieder aus.",
+        "data": {
+          "auto_off_seconds": "Einschaltdauer der Zonen-Sensoren (Sekunden)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "zone_person": {
+        "name": "{zone} Person"
+      },
+      "zone_vehicle": {
+        "name": "{zone} Fahrzeug"
+      },
+      "zone_animal": {
+        "name": "{zone} Tier"
+      },
+      "zone_license_plate": {
+        "name": "{zone} Kennzeichen"
+      }
+    },
+    "event": {
+      "zone_activity": {
+        "name": "Zonen-Aktivität"
+      }
+    },
+    "sensor": {
+      "object_type": {
+        "name": "Erkannter Objekttyp"
+      },
+      "lines_crossed": {
+        "name": "Überschrittene Linien"
+      }
+    }
   }
 }

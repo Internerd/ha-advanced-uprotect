@@ -3,25 +3,24 @@
 Runs alongside the official ``unifiprotect`` core integration. It opens its
 own connection to the same Protect NVR purely to derive the zone-path of
 each smart-detect event (which zones - and in which order - an object moved
-through), a field the core integration does not expose.
+through, and which object was in which zone), data the core integration does
+not expose.
 """
 
 from __future__ import annotations
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
-
 from uiprotect.exceptions import ClientError, NotAuthorized
 
-from .const import CONF_VERIFY_SSL, DOMAIN
-from .hub import ProtectZoneHub
-
-PLATFORMS = ["event"]
+from .const import CONF_VERIFY_SSL, PLATFORMS
+from .hub import ProtectZoneHub, ProtectZonesConfigEntry
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(
+    hass: HomeAssistant, entry: ProtectZonesConfigEntry
+) -> bool:
     hub = ProtectZoneHub(
         hass=hass,
         entry_id=entry.entry_id,
@@ -35,19 +34,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await hub.async_connect()
     except NotAuthorized as err:
-        raise ConfigEntryNotReady(f"Invalid credentials for Protect NVR: {err}") from err
+        raise ConfigEntryNotReady(
+            f"Invalid credentials for Protect NVR: {err}"
+        ) from err
     except ClientError as err:
         raise ConfigEntryNotReady(f"Could not reach Protect NVR: {err}") from err
 
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = hub
+    entry.runtime_data = hub
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(
+    hass: HomeAssistant, entry: ProtectZonesConfigEntry
+) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        hub: ProtectZoneHub = hass.data[DOMAIN].pop(entry.entry_id)
-        await hub.async_disconnect()
+        await entry.runtime_data.async_disconnect()
     return unload_ok
+
+
+async def _async_options_updated(
+    hass: HomeAssistant, entry: ProtectZonesConfigEntry
+) -> None:
+    """Reload so entities pick up a changed auto-off delay."""
+    await hass.config_entries.async_reload(entry.entry_id)

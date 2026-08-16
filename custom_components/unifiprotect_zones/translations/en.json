@@ -21,5 +21,45 @@
     "abort": {
       "already_configured": "This Protect NVR is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "UniFi Protect Zone Tracking options",
+        "description": "Protect only publishes a detection track once the event has ended, so the per-zone sensors report as a pulse: they turn on when the event is processed and off again after this delay.",
+        "data": {
+          "auto_off_seconds": "Zone sensor on-time (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "zone_person": {
+        "name": "{zone} person"
+      },
+      "zone_vehicle": {
+        "name": "{zone} vehicle"
+      },
+      "zone_animal": {
+        "name": "{zone} animal"
+      },
+      "zone_license_plate": {
+        "name": "{zone} license plate"
+      }
+    },
+    "event": {
+      "zone_activity": {
+        "name": "Zone activity"
+      }
+    },
+    "sensor": {
+      "object_type": {
+        "name": "Detected object type"
+      },
+      "lines_crossed": {
+        "name": "Lines crossed"
+      }
+    }
   }
 }
