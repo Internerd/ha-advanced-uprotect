@@ -7,8 +7,9 @@ object moved through during a single event, derived from the per-event
 "smart detect track" the NVR keeps only long enough to serve one API call.
 
 Zone *membership* per event is genuinely available from the Protect API, and
-so is the object type of every single track point, which is what lets this
-integration say *which* object was in *which* zone. Line-crossing
+so is the object type of every single track point - and, for vehicles, the
+recognized license plate. That is what lets this integration say *which*
+object, and *which* plate, was in *which* zone. Line-crossing
 *direction* (e.g. "in" vs "out") is not modeled by the API at all as of
 uiprotect 15.x - only which line id(s) were touched. Anything more than that
 would be fabricated, so it is intentionally left out.
@@ -33,6 +34,9 @@ from uiprotect.data.websocket import WSAction, WSSubscriptionMessage
 from .const import (
     OBJECT_TYPE_LICENSE_PLATE,
     OBJECT_TYPE_VEHICLE,
+    PLATE_CARRIER_TYPES,
+    PLATE_SOURCE_EVENT,
+    PLATE_SOURCE_ZONE,
     SIGNAL_ZONE_EVENT,
     SIGNAL_ZONES_UPDATED,
     ZONE_OBJECT_TYPES,
@@ -54,6 +58,12 @@ class ZoneDetection:
     zone_name: str
     object_types: set[str] = field(default_factory=set)
     license_plates: list[str] = field(default_factory=list)
+    license_plate_source: str | None = None
+
+    @property
+    def license_plate(self) -> str | None:
+        """The most recent plate read for this zone during the event."""
+        return self.license_plates[-1] if self.license_plates else None
 
 
 @dataclass
@@ -70,6 +80,11 @@ class ZoneActivity:
     lines_crossed: list[str] = field(default_factory=list)
     license_plates: list[str] = field(default_factory=list)
     detections_by_zone: dict[int, ZoneDetection] = field(default_factory=dict)
+
+    @property
+    def license_plate(self) -> str | None:
+        """The most recent plate read anywhere in this event."""
+        return self.license_plates[-1] if self.license_plates else None
 
     @property
     def from_zone(self) -> str | None:
@@ -102,6 +117,25 @@ def zone_object_types(zone: SmartMotionZone) -> list[str]:
     if OBJECT_TYPE_VEHICLE in configured and OBJECT_TYPE_LICENSE_PLATE not in types:
         types.append(OBJECT_TYPE_LICENSE_PLATE)
     return types
+
+
+def event_license_plates(event: Event) -> list[str]:
+    """Plates Protect attached to the event itself.
+
+    Depending on firmware the plate text shows up on the vehicle track point,
+    on a separate ``licensePlate`` detection thumbnail for the same event, or
+    on both. Reading the event metadata as well means the plate is not lost
+    when only the second form is populated.
+    """
+    plates: list[str] = []
+    metadata = getattr(event, "metadata", None)
+    for thumbnail in getattr(metadata, "detected_thumbnails", None) or []:
+        if normalize_object_type(thumbnail.type or "") != OBJECT_TYPE_LICENSE_PLATE:
+            continue
+        plate = (thumbnail.name or "").strip()
+        if plate and plate not in plates:
+            plates.append(plate)
+    return plates
 
 
 def build_zone_activity(
@@ -151,8 +185,9 @@ def build_zone_activity(
             detection.object_types.add(item_type)
             if plate:
                 # A plate read implies a vehicle carrying it, and it is what
-                # the per-zone "license plate" entity reports on.
+                # the per-zone "license plate" entities report on.
                 detection.object_types.add(OBJECT_TYPE_LICENSE_PLATE)
+                detection.license_plate_source = PLATE_SOURCE_ZONE
                 if plate not in detection.license_plates:
                     detection.license_plates.append(plate)
 
@@ -162,6 +197,26 @@ def build_zone_activity(
             name = f"line-{line_id}"
             if name not in lines_crossed:
                 lines_crossed.append(name)
+
+    for plate in event_license_plates(event):
+        if plate not in license_plates:
+            license_plates.append(plate)
+
+    if len(license_plates) == 1:
+        # Protect regularly reads the plate on a frame that carries no zone
+        # ids, or reports it only on the event. With exactly one plate in the
+        # whole event there is no ambiguity about which vehicle it belongs to,
+        # so every zone that saw a vehicle saw that plate. More than one plate
+        # would mean guessing, and that is left alone.
+        plate = license_plates[0]
+        for detection in detections.values():
+            if detection.license_plates:
+                continue
+            if not detection.object_types & PLATE_CARRIER_TYPES:
+                continue
+            detection.license_plates.append(plate)
+            detection.object_types.add(OBJECT_TYPE_LICENSE_PLATE)
+            detection.license_plate_source = PLATE_SOURCE_EVENT
 
     for smart_type in event.smart_detect_types:
         normalized = normalize_object_type(smart_type.value)
@@ -282,8 +337,9 @@ class ProtectZoneHub:
 
         try:
             track = await self.api.get_event_smart_detect_track(event.id)
-        except Exception:
-            # The track 404s once Protect has expired it.
+        except Exception:  # noqa: BLE001 - uiprotect raises bare errors here
+            # The track 404s once Protect has expired it, and a hiccup on one
+            # event must never take the websocket listener down.
             _LOGGER.debug(
                 "Could not fetch smart-detect track for event %s",
                 event.id,

@@ -59,6 +59,9 @@
       },
       "lines_crossed": {
         "name": "Lines crossed"
+      },
+      "zone_license_plate": {
+        "name": "{zone} license plate number"
       }
     }
   }

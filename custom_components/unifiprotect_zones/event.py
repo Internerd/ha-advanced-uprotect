@@ -47,7 +47,13 @@ class ProtectZoneEventEntity(ProtectZoneEntity, EventEntity):
                 "from_zone": activity.from_zone,
                 "to_zone": activity.to_zone,
                 "lines_crossed": activity.lines_crossed,
+                "license_plate": activity.license_plate,
                 "license_plates": activity.license_plates,
+                "license_plates_by_zone": {
+                    detection.zone_name: detection.license_plates
+                    for detection in activity.detections_by_zone.values()
+                    if detection.license_plates
+                },
             },
         )
         self.async_write_ha_state()

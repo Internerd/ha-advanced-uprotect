@@ -59,6 +59,9 @@
       },
       "lines_crossed": {
         "name": "Überschrittene Linien"
+      },
+      "zone_license_plate": {
+        "name": "{zone} Kennzeichen-Nummer"
       }
     }
   }

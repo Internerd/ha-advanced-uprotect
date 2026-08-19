@@ -44,7 +44,9 @@ smart-detect event that touched a zone or a line, with these attributes:
 | `lines_crossed`  | Any line-crossing zones the object's track touched                         |
 | `object_type`    | `person`, `vehicle`, `animal`, `licensePlate`, ...                         |
 | `object_types`   | Every object type seen during the event                                    |
-| `license_plates` | Any license plate text read during the event                               |
+| `license_plate`  | The most recent license plate text read during the event                   |
+| `license_plates` | Every license plate text read during the event                             |
+| `license_plates_by_zone` | Mapping of zone name → the plate(s) read while the vehicle was in that zone |
 | `score`          | Protect's detection confidence score                                       |
 | `event_id`       | The Protect event id, for cross-referencing                                |
 
@@ -63,10 +65,54 @@ can be used in templates, dashboards and history without unpacking an event:
 | `sensor.<camera>_lines_crossed`            | The line-crossing zone(s) the last track touched     |
 
 Both keep the full detail in their attributes (`object_types`, `zones`,
-`license_plates`, `lines_crossed`, `line_count`, `event_id`) and restore
-their last value across a Home Assistant restart. `lines_crossed` only
-updates on events that actually crossed a line, so a zone-only event does
-not wipe it.
+`license_plate`, `license_plates`, `license_plates_by_zone`,
+`lines_crossed`, `line_count`, `event_id`) and restore their last value
+across a Home Assistant restart. `lines_crossed` only updates on events that
+actually crossed a line, so a zone-only event does not wipe it.
+
+### One license plate sensor per zone
+
+For every Smart Detection Zone that detects vehicles, the integration also
+creates a sensor whose **state is the plate text itself**:
+
+| Entity                                                  | State                                        |
+|---------------------------------------------------------|----------------------------------------------|
+| `sensor.<camera>_<zone>_license_plate_number`            | Last plate recognized inside that zone, e.g. `M-AB 1234` |
+
+Unlike the per-zone binary sensors this is not a pulse - it keeps the last
+plate it saw (across restarts too), so it can be displayed on a dashboard
+and compared in a template. Events without a plate reading leave the
+previous value alone.
+
+Attributes: `zone`, `license_plates` (all plates of the last event in that
+zone), `license_plate_source`, `event_id`, `last_detected`.
+
+**Where the plate comes from.** Protect reads a plate off a *vehicle*, and
+reports it either on the individual track point (which carries the zone ids -
+`license_plate_source: zone`) or only on the event as a whole
+(`license_plate_source: event`). In the second case the plate is assigned to
+every zone that saw a vehicle during that event, but **only when the whole
+event contains exactly one plate**, so the assignment is unambiguous. If two
+vehicles with two different plates appear in one event, each zone keeps only
+the plate that was genuinely read while the vehicle was inside it - the rest
+is left blank rather than guessed.
+
+Example: notify with the plate that was seen in the driveway zone.
+
+```yaml
+automation:
+  - alias: Announce plate in the driveway
+    triggers:
+      - trigger: state
+        entity_id: sensor.driveway_cam_driveway_license_plate_number
+    conditions:
+      - condition: template
+        value_template: "{{ trigger.to_state.state not in ['unknown', 'unavailable'] }}"
+    actions:
+      - action: notify.mobile_app
+        data:
+          message: "Vehicle {{ trigger.to_state.state }} in the driveway"
+```
 
 Protect's local API does not expose the *names* of crossing lines (only zone
 names), so lines are reported by id as `line-<id>`.
@@ -102,8 +148,10 @@ A few notes on how they behave:
   Protect app and the matching entities appear without reloading anything.
   Renaming a zone updates the entity name after the next reload of the
   integration.
-- **Attributes**: `zone`, `object_type`, `event_id`, `last_detected`, and
-  `license_plates` on the license plate sensors.
+- **Attributes**: `zone`, `object_type`, `event_id`, `last_detected`, plus
+  `license_plate`, `license_plates` and `license_plate_source` on the license
+  plate sensors. The plate text as a *state* lives on the per-zone license
+  plate sensor described above.
 
 Example automation:
 

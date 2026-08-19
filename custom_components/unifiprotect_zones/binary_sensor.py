@@ -122,6 +122,7 @@ class ProtectZoneObjectBinarySensor(ProtectZoneEntity, BinarySensorEntity):
         self._last_detected: datetime | None = None
         self._last_event_id: str | None = None
         self._license_plates: list[str] = []
+        self._license_plate_source: str | None = None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -134,7 +135,11 @@ class ProtectZoneObjectBinarySensor(ProtectZoneEntity, BinarySensorEntity):
             else None,
         }
         if self._object_type == OBJECT_TYPE_LICENSE_PLATE:
+            attributes["license_plate"] = (
+                self._license_plates[-1] if self._license_plates else None
+            )
             attributes["license_plates"] = self._license_plates
+            attributes["license_plate_source"] = self._license_plate_source
         return attributes
 
     async def async_added_to_hass(self) -> None:
@@ -150,6 +155,7 @@ class ProtectZoneObjectBinarySensor(ProtectZoneEntity, BinarySensorEntity):
         self._last_event_id = activity.event_id
         self._last_detected = dt_util.utcnow()
         self._license_plates = list(detection.license_plates)
+        self._license_plate_source = detection.license_plate_source
         self._attr_is_on = True
         self._async_cancel_auto_off()
         self._unsub_auto_off = async_call_later(

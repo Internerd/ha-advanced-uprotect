@@ -51,6 +51,17 @@ OBJECT_TYPE_SLUGS: Final = {
     OBJECT_TYPE_LICENSE_PLATE: "license_plate",
 }
 
+# Object types that can carry a license plate. Protect only ever reads a
+# plate off a vehicle, and reports it either on the vehicle track point or as
+# a separate licensePlate detection for the same event.
+PLATE_CARRIER_TYPES: Final = frozenset({OBJECT_TYPE_VEHICLE, OBJECT_TYPE_LICENSE_PLATE})
+
+# Where a per-zone plate reading came from: read on a track point that was
+# inside the zone, or taken from the event as a whole (see
+# `build_zone_activity`).
+PLATE_SOURCE_ZONE: Final = "zone"
+PLATE_SOURCE_EVENT: Final = "event"
+
 # Keys in strings.json / translations/*.json.
 OBJECT_TYPE_TRANSLATION_KEYS: Final = {
     OBJECT_TYPE_PERSON: "zone_person",
