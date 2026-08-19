@@ -21,6 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 import logging
 
+import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
@@ -30,6 +31,7 @@ from uiprotect.data import Camera, Event, EventType
 from uiprotect.data.devices import SmartMotionZone
 from uiprotect.data.nvr import SmartDetectTrack
 from uiprotect.data.websocket import WSAction, WSSubscriptionMessage
+from uiprotect.exceptions import UnifiProtectError
 
 from .const import (
     OBJECT_TYPE_LICENSE_PLATE,
@@ -337,9 +339,9 @@ class ProtectZoneHub:
 
         try:
             track = await self.api.get_event_smart_detect_track(event.id)
-        except Exception:  # noqa: BLE001 - uiprotect raises bare errors here
-            # The track 404s once Protect has expired it, and a hiccup on one
-            # event must never take the websocket listener down.
+        except (UnifiProtectError, aiohttp.ClientError, TimeoutError):
+            # The track 404s once Protect has expired it, and a network hiccup
+            # on a single event must not bubble out of this task.
             _LOGGER.debug(
                 "Could not fetch smart-detect track for event %s",
                 event.id,
