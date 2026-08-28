@@ -21,6 +21,7 @@ from uiprotect.data.devices import SmartMotionZone
 from .const import (
     CONF_AUTO_OFF_SECONDS,
     DEFAULT_AUTO_OFF_SECONDS,
+    OBJECT_TYPE_ANY,
     OBJECT_TYPE_LICENSE_PLATE,
     OBJECT_TYPE_SLUGS,
     OBJECT_TYPE_TRANSLATION_KEYS,
@@ -44,6 +45,9 @@ async def async_setup_entry(
 ) -> None:
     """Create one entity per camera, zone and detectable object type.
 
+    Every zone additionally gets the type-agnostic "activity" sensor, which
+    is the closest the Protect API gets to plain motion per zone.
+
     Zones can be added in the Protect app at any time, so the platform keeps
     track of what it has already created and adds entities for zones as they
     show up.
@@ -56,7 +60,7 @@ async def async_setup_entry(
     def _async_add_camera_zones(camera: Camera) -> None:
         entities: list[ProtectZoneObjectBinarySensor] = []
         for zone in camera.smart_detect_zones:
-            for object_type in zone_object_types(zone):
+            for object_type in (OBJECT_TYPE_ANY, *zone_object_types(zone)):
                 key = (camera.id, zone.id, object_type)
                 if key in known:
                     continue
@@ -88,6 +92,9 @@ async def async_setup_entry(
 
 class ProtectZoneObjectBinarySensor(ProtectZoneEntity, BinarySensorEntity):
     """Turns on when a given object type was tracked inside a given zone.
+
+    With :data:`OBJECT_TYPE_ANY` it turns on for *any* tracked object in that
+    zone instead, including object types that have no entity of their own.
 
     Protect only hands out a smart-detect track once the event has finished,
     so this is a pulse: it switches on when the event is processed and back
@@ -121,6 +128,7 @@ class ProtectZoneObjectBinarySensor(ProtectZoneEntity, BinarySensorEntity):
             self._attr_device_class = BinarySensorDeviceClass.MOTION
         self._last_detected: datetime | None = None
         self._last_event_id: str | None = None
+        self._detected_object_types: list[str] = []
         self._license_plates: list[str] = []
         self._license_plate_source: str | None = None
 
@@ -134,6 +142,9 @@ class ProtectZoneObjectBinarySensor(ProtectZoneEntity, BinarySensorEntity):
             if self._last_detected
             else None,
         }
+        if self._object_type == OBJECT_TYPE_ANY:
+            # What the zone-agnostic sensor actually reacted to.
+            attributes["object_types"] = self._detected_object_types
         if self._object_type == OBJECT_TYPE_LICENSE_PLATE:
             attributes["license_plate"] = (
                 self._license_plates[-1] if self._license_plates else None
@@ -149,11 +160,17 @@ class ProtectZoneObjectBinarySensor(ProtectZoneEntity, BinarySensorEntity):
     @callback
     def _async_handle_activity(self, activity: ZoneActivity) -> None:
         detection = activity.detections_by_zone.get(self._zone_id)
-        if detection is None or self._object_type not in detection.object_types:
+        if detection is None:
+            return
+        if (
+            self._object_type != OBJECT_TYPE_ANY
+            and self._object_type not in detection.object_types
+        ):
             return
 
         self._last_event_id = activity.event_id
         self._last_detected = dt_util.utcnow()
+        self._detected_object_types = detection.object_type_list
         self._license_plates = list(detection.license_plates)
         self._license_plate_source = detection.license_plate_source
         self._attr_is_on = True

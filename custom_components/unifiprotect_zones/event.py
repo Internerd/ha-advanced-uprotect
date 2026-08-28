@@ -47,6 +47,10 @@ class ProtectZoneEventEntity(ProtectZoneEntity, EventEntity):
                 "from_zone": activity.from_zone,
                 "to_zone": activity.to_zone,
                 "lines_crossed": activity.lines_crossed,
+                "object_types_by_zone": {
+                    detection.zone_name: detection.object_type_list
+                    for detection in activity.detections_by_zone.values()
+                },
                 "license_plate": activity.license_plate,
                 "license_plates": activity.license_plates,
                 "license_plates_by_zone": {

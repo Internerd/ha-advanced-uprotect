@@ -67,6 +67,11 @@ class ZoneDetection:
         """The most recent plate read for this zone during the event."""
         return self.license_plates[-1] if self.license_plates else None
 
+    @property
+    def object_type_list(self) -> list[str]:
+        """Object types seen in this zone, in a stable order."""
+        return sorted(self.object_types)
+
 
 @dataclass
 class ZoneActivity:

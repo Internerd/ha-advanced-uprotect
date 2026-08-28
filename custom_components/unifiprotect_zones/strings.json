@@ -35,6 +35,9 @@
   },
   "entity": {
     "binary_sensor": {
+      "zone_any_object": {
+        "name": "{zone} activity"
+      },
       "zone_person": {
         "name": "{zone} person"
       },

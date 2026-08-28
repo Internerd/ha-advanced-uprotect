@@ -114,6 +114,7 @@ class ProtectObjectTypeSensor(ProtectZoneSensorBase):
     _attr_icon = "mdi:shape-outline"
     _restored_attributes: ClassVar[set[str]] = {
         "object_types",
+        "object_types_by_zone",
         "event_id",
         "zones",
         "license_plate",
@@ -130,6 +131,10 @@ class ProtectObjectTypeSensor(ProtectZoneSensorBase):
         self._attr_native_value = activity.object_type
         self._attr_extra_state_attributes = {
             "object_types": activity.object_types,
+            "object_types_by_zone": {
+                detection.zone_name: detection.object_type_list
+                for detection in activity.detections_by_zone.values()
+            },
             "event_id": activity.event_id,
             "zones": activity.zones,
             "license_plate": activity.license_plate,

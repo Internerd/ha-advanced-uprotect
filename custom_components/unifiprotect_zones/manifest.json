@@ -9,5 +9,5 @@
   "issue_tracker": "https://github.com/Internerd/ha-advanced-uprotect/issues",
   "loggers": ["uiprotect"],
   "requirements": ["uiprotect>=15.0.0"],
-  "version": "0.3.0"
+  "version": "0.4.0"
 }

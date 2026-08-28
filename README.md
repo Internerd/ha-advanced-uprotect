@@ -12,7 +12,8 @@ Custom Home Assistant integration that connects to a UniFi Protect NVR
 *in addition to* the official core `unifiprotect` integration, purely to
 expose data the core integration does not: **which Smart Detection Zone(s)
 a person, vehicle, animal or license plate moved through during a single
-detection event, in order.**
+detection event, in order** - plus a per-zone "something was in here"
+sensor.
 
 ## Why a separate integration
 
@@ -44,6 +45,7 @@ smart-detect event that touched a zone or a line, with these attributes:
 | `lines_crossed`  | Any line-crossing zones the object's track touched                         |
 | `object_type`    | `person`, `vehicle`, `animal`, `licensePlate`, ...                         |
 | `object_types`   | Every object type seen during the event                                    |
+| `object_types_by_zone` | Mapping of zone name → the object type(s) tracked inside that zone   |
 | `license_plate`  | The most recent license plate text read during the event                   |
 | `license_plates` | Every license plate text read during the event                             |
 | `license_plates_by_zone` | Mapping of zone name → the plate(s) read while the vehicle was in that zone |
@@ -119,11 +121,12 @@ names), so lines are reported by id as `line-<id>`.
 
 ### One binary sensor per camera, zone and object type
 
-For every Smart Detection Zone the integration creates up to four binary
-sensors:
+For every Smart Detection Zone the integration creates one type-agnostic
+binary sensor plus up to four typed ones:
 
 | Entity                                          | Turns on when                              |
 |-------------------------------------------------|--------------------------------------------|
+| `binary_sensor.<camera>_<zone>_activity`        | *anything* was tracked inside that zone    |
 | `binary_sensor.<camera>_<zone>_person`          | a person was tracked inside that zone      |
 | `binary_sensor.<camera>_<zone>_vehicle`         | a vehicle was tracked inside that zone     |
 | `binary_sensor.<camera>_<zone>_animal`          | an animal was tracked inside that zone     |
@@ -135,6 +138,13 @@ cannot make.
 
 A few notes on how they behave:
 
+- **The activity sensor is "motion per zone", within limits.** It turns on
+  for *any* object Protect tracked inside that zone, whatever it classified
+  it as - including types that have no entity of their own, such as
+  `package`. Its `object_types` attribute lists what was actually seen. It is
+  created for every zone, even one configured for a single object type, and
+  it is *not* fed by Protect's pixel-based motion detection - see
+  [Plain motion is not available per zone](#plain-motion-is-not-available-per-zone).
 - **Only what the zone can detect.** Protect stores which object types a zone
   is configured for, and only those get an entity (plus license plate
   whenever the zone detects vehicles). A zone configured for people only
@@ -173,7 +183,31 @@ automation:
             {{ state_attr('sensor.driveway_cam_detected_object_type', 'license_plates') | join(', ') }}
 ```
 
-## Known limitation
+## Known limitations
+
+### Plain motion is not available per zone
+
+Protect keeps two independent sets of zones per camera: the pixel-based
+**Motion Detection** zones (`motionZones`) and the **Smart Detection** zones
+(`smartDetectZones`) everything above is derived from. The zone membership
+this integration reports comes from the per-event smart-detect track, and
+that track only exists for `smartDetectZone` / `smartDetectLine` events.
+
+A plain `motion` event carries no zone reference anywhere in the local API:
+the event object has no zone field, its metadata does not mention zones, and
+the camera object exposes only a single global `isMotionDetected` flag.
+Protect never says *which* motion zone fired (checked against `uiprotect`
+16.2.0). The one indirect hint is the per-event heatmap PNG, which would have
+to be decoded and sampled against the zone polygons to *guess* a zone - an
+approximation rather than data, so it is deliberately not implemented.
+
+The practical consequence: `binary_sensor.<camera>_<zone>_activity` means
+"the NVR tracked some recognized object in this zone". Movement Protect does
+not classify as an object - rain, a swaying branch, headlights, an animal on
+a camera without animal detection - produces a `motion` event with no zone
+information and therefore reaches no entity of this integration.
+
+### Line-crossing direction is not exposed
 
 UniFi Protect's *line-crossing* feature can report a crossing direction
 (in/out) in its own web UI, but that direction is **not** modeled anywhere

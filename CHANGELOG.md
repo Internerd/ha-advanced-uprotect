@@ -5,6 +5,25 @@ All notable changes to this project are documented here. This project uses
 `custom_components/unifiprotect_zones/manifest.json` is what HACS and Home
 Assistant read.
 
+## 0.4.0
+
+### Added
+
+- `binary_sensor.<camera>_<zone>_activity` for every Smart Detection Zone:
+  turns on when *any* object was tracked inside that zone, whatever Protect
+  classified it as. It is the closest the Protect API gets to "motion in this
+  zone", and it also covers object types that have no entity of their own
+  (`package`, `face`). Its `object_types` attribute lists what was seen.
+- The event entity and `sensor.<camera>_detected_object_type` gained
+  `object_types_by_zone` (zone name → object types tracked in that zone).
+
+### Notes
+
+- Protect's pixel-based **Motion Detection** zones remain out of reach: a
+  plain `motion` event carries no zone reference anywhere in the local API
+  (no field on the event, nothing in its metadata, only a global
+  `isMotionDetected` on the camera). See "Known limitations" in the README.
+
 ## 0.3.0
 
 ### Added

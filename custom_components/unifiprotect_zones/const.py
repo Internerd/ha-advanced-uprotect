@@ -36,6 +36,15 @@ ZONE_OBJECT_TYPES: Final = (
     OBJECT_TYPE_LICENSE_PLATE,
 )
 
+# Synthetic type behind the per-zone "anything at all" sensor. Protect's own
+# pixel-based motion detection (`Camera.motion_zones`) never reports which of
+# those zones fired - a `motion` event carries no zone ids at all - so the
+# closest thing to "something moved in this zone" that the API really
+# supports is "the NVR tracked *some* object in there", whatever it
+# classified it as. That includes types without an entity of their own, such
+# as `package`, which is why this is not just an OR of the four types above.
+OBJECT_TYPE_ANY: Final = "any"
+
 # Protect uses a couple of near-synonyms depending on firmware and on where
 # in the API the value shows up; they are folded into the four types above.
 OBJECT_TYPE_ALIASES: Final = {
@@ -45,6 +54,7 @@ OBJECT_TYPE_ALIASES: Final = {
 
 # Used to build unique ids and entity ids, so it must stay stable.
 OBJECT_TYPE_SLUGS: Final = {
+    OBJECT_TYPE_ANY: "activity",
     OBJECT_TYPE_PERSON: "person",
     OBJECT_TYPE_VEHICLE: "vehicle",
     OBJECT_TYPE_ANIMAL: "animal",
@@ -64,6 +74,7 @@ PLATE_SOURCE_EVENT: Final = "event"
 
 # Keys in strings.json / translations/*.json.
 OBJECT_TYPE_TRANSLATION_KEYS: Final = {
+    OBJECT_TYPE_ANY: "zone_any_object",
     OBJECT_TYPE_PERSON: "zone_person",
     OBJECT_TYPE_VEHICLE: "zone_vehicle",
     OBJECT_TYPE_ANIMAL: "zone_animal",
