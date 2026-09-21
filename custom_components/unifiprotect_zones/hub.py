@@ -102,6 +102,21 @@ class ZoneActivity:
         return self.zone_path[-1] if self.zone_path else None
 
 
+def camera_reports_zones(camera: Camera) -> bool:
+    """Whether this camera can produce zone activity at all.
+
+    A camera only gets entities once it has a Smart Detection Zone or can
+    cross lines. Both can appear after setup - drawing the *first* zone in
+    the Protect app is what turns a camera into one this integration has
+    anything to say about - so the platforms re-check this whenever zones
+    change, not just at startup.
+    """
+    return bool(
+        camera.smart_detect_zones
+        or getattr(camera.feature_flags, "has_line_crossing", False)
+    )
+
+
 def zone_object_types(zone: SmartMotionZone) -> list[str]:
     """Return the object types worth creating an entity for in this zone.
 
@@ -281,8 +296,7 @@ class ProtectZoneHub:
         return [
             camera
             for camera in self.api.bootstrap.cameras.values()
-            if camera.smart_detect_zones
-            or getattr(camera.feature_flags, "has_line_crossing", False)
+            if camera_reports_zones(camera)
         ]
 
     def get_camera(self, camera_id: str) -> Camera | None:

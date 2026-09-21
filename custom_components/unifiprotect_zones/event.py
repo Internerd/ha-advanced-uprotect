@@ -6,12 +6,18 @@ from typing import ClassVar
 
 from homeassistant.components.event import EventEntity
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from uiprotect.data import Camera
 
-from .const import EVENT_TYPE_ZONE_ACTIVITY
+from .const import EVENT_TYPE_ZONE_ACTIVITY, SIGNAL_ZONES_UPDATED
 from .entity import ProtectZoneEntity
-from .hub import ProtectZoneHub, ProtectZonesConfigEntry, ZoneActivity
+from .hub import (
+    ProtectZoneHub,
+    ProtectZonesConfigEntry,
+    ZoneActivity,
+    camera_reports_zones,
+)
 
 
 async def async_setup_entry(
@@ -19,8 +25,37 @@ async def async_setup_entry(
     entry: ProtectZonesConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    """Create one event entity per camera that can report zone activity.
+
+    A camera qualifies the moment its first Smart Detection Zone is drawn,
+    which can happen long after setup, so the platform also listens for zone
+    changes instead of only looking at the cameras present at startup.
+    """
     hub = entry.runtime_data
-    async_add_entities(ProtectZoneEventEntity(hub, camera) for camera in hub.cameras)
+    known: set[str] = set()
+
+    @callback
+    def _async_add_camera(camera: Camera) -> None:
+        if camera.id in known or not camera_reports_zones(camera):
+            return
+        known.add(camera.id)
+        async_add_entities([ProtectZoneEventEntity(hub, camera)])
+
+    @callback
+    def _async_zones_updated(camera_id: str) -> None:
+        if (camera := hub.get_camera(camera_id)) is not None:
+            _async_add_camera(camera)
+
+    for camera in hub.cameras:
+        _async_add_camera(camera)
+
+    entry.async_on_unload(
+        async_dispatcher_connect(
+            hass,
+            SIGNAL_ZONES_UPDATED.format(entry_id=entry.entry_id),
+            _async_zones_updated,
+        )
+    )
 
 
 class ProtectZoneEventEntity(ProtectZoneEntity, EventEntity):

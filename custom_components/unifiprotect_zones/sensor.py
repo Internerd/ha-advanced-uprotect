@@ -19,6 +19,7 @@ from .hub import (
     ProtectZoneHub,
     ProtectZonesConfigEntry,
     ZoneActivity,
+    camera_reports_zones,
     zone_object_types,
 )
 
@@ -35,10 +36,25 @@ async def async_setup_entry(
 
     Zones can be added in the Protect app at any time, so - like the binary
     sensors - the platform tracks which zones it has already covered and adds
-    entities for new ones as they show up.
+    entities for new ones as they show up. A camera's *first* zone also makes
+    the camera itself reportable, so the per-camera sensors are created the
+    same way instead of only at startup.
     """
     hub = entry.runtime_data
+    known_cameras: set[str] = set()
     known_plate_zones: set[tuple[str, int]] = set()
+
+    @callback
+    def _async_add_camera(camera: Camera) -> None:
+        if camera.id in known_cameras or not camera_reports_zones(camera):
+            return
+        known_cameras.add(camera.id)
+        async_add_entities(
+            [
+                ProtectObjectTypeSensor(hub, camera),
+                ProtectLinesCrossedSensor(hub, camera),
+            ]
+        )
 
     @callback
     def _async_add_plate_zones(camera: Camera) -> None:
@@ -57,15 +73,11 @@ async def async_setup_entry(
     @callback
     def _async_zones_updated(camera_id: str) -> None:
         if (camera := hub.get_camera(camera_id)) is not None:
+            _async_add_camera(camera)
             _async_add_plate_zones(camera)
 
-    entities: list[SensorEntity] = []
     for camera in hub.cameras:
-        entities.append(ProtectObjectTypeSensor(hub, camera))
-        entities.append(ProtectLinesCrossedSensor(hub, camera))
-    async_add_entities(entities)
-
-    for camera in hub.cameras:
+        _async_add_camera(camera)
         _async_add_plate_zones(camera)
 
     entry.async_on_unload(

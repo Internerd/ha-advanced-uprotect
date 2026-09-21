@@ -52,6 +52,9 @@ smart-detect event that touched a zone or a line, with these attributes:
 | `score`          | Protect's detection confidence score                                       |
 | `event_id`       | The Protect event id, for cross-referencing                                |
 
+The entity appears as soon as the camera qualifies - including when you draw
+its very first zone while the integration is already running.
+
 Use it in an automation trigger like any other `event` entity, e.g.
 trigger on `event.driveway_zone_activity` and read
 `trigger.event.data.from_zone` / `to_zone` in the action.
@@ -155,9 +158,10 @@ A few notes on how they behave:
   off again after a delay you can configure (Settings → Devices & Services →
   UniFi Protect Zone Tracking → **Configure**; 10 seconds by default).
 - **Zones added later are picked up automatically.** Add a zone in the
-  Protect app and the matching entities appear without reloading anything.
-  Renaming a zone updates the entity name after the next reload of the
-  integration.
+  Protect app and the matching entities appear without reloading anything -
+  including on a camera that had no zone at all until then, which gains its
+  event entity and per-camera sensors at the same moment. Renaming a zone
+  updates the entity name after the next reload of the integration.
 - **Attributes**: `zone`, `object_type`, `event_id`, `last_detected`, plus
   `license_plate`, `license_plates` and `license_plate_source` on the license
   plate sensors. The plate text as a *state* lives on the per-zone license

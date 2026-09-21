@@ -17,6 +17,15 @@ Assistant read.
 - The event entity and `sensor.<camera>_detected_object_type` gained
   `object_types_by_zone` (zone name → object types tracked in that zone).
 
+### Fixed
+
+- A camera that had no Smart Detection Zone when the integration started
+  only ever got its per-zone binary sensors when the first zone was drawn -
+  the event entity and the two per-camera sensors were created once at
+  startup and never afterwards, so that camera stayed without them until the
+  integration was reloaded. All three platforms now re-check a camera when
+  its zones change.
+
 ### Notes
 
 - Protect's pixel-based **Motion Detection** zones remain out of reach: a
