@@ -68,15 +68,18 @@ class UnifiProtectZonesConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            # A throwaway session for this one check. Home Assistant owns its
+            # sessions and warns when one is closed, so it is detached instead.
+            session = async_create_clientsession(
+                self.hass, verify_ssl=user_input[CONF_VERIFY_SSL], auto_cleanup=False
+            )
             api = ProtectApiClient(
                 host=user_input[CONF_HOST],
                 port=user_input[CONF_PORT],
                 username=user_input[CONF_USERNAME],
                 password=user_input[CONF_PASSWORD],
                 verify_ssl=user_input[CONF_VERIFY_SSL],
-                session=async_create_clientsession(
-                    self.hass, verify_ssl=user_input[CONF_VERIFY_SSL]
-                ),
+                session=session,
             )
             try:
                 bootstrap = await api.update()
@@ -95,7 +98,7 @@ class UnifiProtectZonesConfigFlow(ConfigFlow, domain=DOMAIN):
                     data=user_input,
                 )
             finally:
-                await api.close_session()
+                session.detach()
 
         return self.async_show_form(
             step_id="user", data_schema=STEP_USER_SCHEMA, errors=errors

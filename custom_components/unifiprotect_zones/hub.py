@@ -17,6 +17,7 @@ would be fabricated, so it is intentionally left out.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 import logging
@@ -48,6 +49,11 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 _TRACKED_EVENT_TYPES = {EventType.SMART_DETECT, EventType.SMART_DETECT_LINE}
+
+# How many finished events to remember so late updates to them are not
+# reported again. Protect stops updating an event well before this many
+# newer ones have finished.
+_MAX_PROCESSED_EVENTS = 256
 
 type ProtectZonesConfigEntry = ConfigEntry[ProtectZoneHub]
 
@@ -279,6 +285,9 @@ class ProtectZoneHub:
     ) -> None:
         self.hass = hass
         self.entry_id = entry_id
+        # Created during config entry setup, so Home Assistant detaches this
+        # session by itself when the entry is unloaded. It must never be
+        # closed here: Home Assistant owns it.
         self.api = ProtectApiClient(
             host=host,
             port=port,
@@ -289,6 +298,11 @@ class ProtectZoneHub:
             subscribed_models=None,
         )
         self._unsub_ws: Callable[[], None] | None = None
+        # Event id -> the event-level plates it was processed with. Protect
+        # keeps updating an event after it has ended (thumbnails, heatmap,
+        # metadata) and every update arrives here again; only a plate that
+        # Protect attaches to the event late is worth another pass.
+        self._processed_events: OrderedDict[str, tuple[str, ...]] = OrderedDict()
 
     @property
     def cameras(self) -> list[Camera]:
@@ -313,7 +327,6 @@ class ProtectZoneHub:
             self._unsub_ws()
             self._unsub_ws = None
         await self.api.async_disconnect_ws()
-        await self.api.close_session()
 
     def _handle_ws_message(self, message: WSSubscriptionMessage) -> None:
         """Filter the realtime feed down to finished smart-detect events."""
@@ -339,6 +352,14 @@ class ProtectZoneHub:
             return
         if new_obj.camera_id is None:
             return
+
+        plates = tuple(event_license_plates(new_obj))
+        if self._processed_events.get(new_obj.id) == plates:
+            return
+        self._processed_events[new_obj.id] = plates
+        self._processed_events.move_to_end(new_obj.id)
+        while len(self._processed_events) > _MAX_PROCESSED_EVENTS:
+            self._processed_events.popitem(last=False)
 
         self.hass.async_create_task(self._async_process_event(new_obj))
 
@@ -366,6 +387,8 @@ class ProtectZoneHub:
                 event.id,
                 exc_info=True,
             )
+            # Let a later update to the same event try again.
+            self._processed_events.pop(event.id, None)
             return
 
         activity = build_zone_activity(event, camera, track)

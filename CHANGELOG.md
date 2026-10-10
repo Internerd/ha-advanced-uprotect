@@ -5,6 +5,21 @@ All notable changes to this project are documented here. This project uses
 `custom_components/unifiprotect_zones/manifest.json` is what HACS and Home
 Assistant read.
 
+## 0.4.1
+
+### Fixed
+
+- Unloading or reloading the integration closed its Home Assistant aiohttp
+  session, which Home Assistant reports as "closes the Home Assistant aiohttp
+  session". The session is now left to Home Assistant, which detaches it when
+  the entry is unloaded. The config flow's connection check did the same and
+  now detaches its throwaway session instead.
+- Every update Protect sends for an event that has already ended (thumbnail,
+  heatmap, metadata) was processed as a new detection: the per-zone binary
+  sensors pulsed again and the event entity fired the same event several
+  times. Each event is now reported once, plus once more only if Protect
+  attaches a new license plate to it afterwards.
+
 ## 0.4.0
 
 ### Added
