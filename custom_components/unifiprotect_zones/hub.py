@@ -48,7 +48,18 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-_TRACKED_EVENT_TYPES = {EventType.SMART_DETECT, EventType.SMART_DETECT_LINE}
+# A zone with loitering detection turned on reports its smart detections as
+# `smartDetectLoiterZone` instead of `smartDetectZone`, with the same track.
+# Older uiprotect releases do not know that type yet.
+_TRACKED_EVENT_TYPES = {
+    event_type
+    for event_type in (
+        EventType.SMART_DETECT,
+        EventType.SMART_DETECT_LINE,
+        getattr(EventType, "SMART_DETECT_LOITER", None),
+    )
+    if event_type is not None
+}
 
 # How many finished events to remember so late updates to them are not
 # reported again. Protect stops updating an event well before this many

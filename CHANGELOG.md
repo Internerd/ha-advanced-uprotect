@@ -5,6 +5,14 @@ All notable changes to this project are documented here. This project uses
 `custom_components/unifiprotect_zones/manifest.json` is what HACS and Home
 Assistant read.
 
+## Unreleased
+
+### Fixed
+
+- Smart detections in a zone with loitering detection turned on were ignored.
+  Protect reports those as `smartDetectLoiterZone` events instead of
+  `smartDetectZone`, so none of that camera's zone entities ever switched on.
+
 ## 0.4.2
 
 ### Fixed

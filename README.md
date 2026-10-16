@@ -195,7 +195,8 @@ Protect keeps two independent sets of zones per camera: the pixel-based
 **Motion Detection** zones (`motionZones`) and the **Smart Detection** zones
 (`smartDetectZones`) everything above is derived from. The zone membership
 this integration reports comes from the per-event smart-detect track, and
-that track only exists for `smartDetectZone` / `smartDetectLine` events.
+that track only exists for `smartDetectZone` / `smartDetectLoiterZone` /
+`smartDetectLine` events.
 
 A plain `motion` event carries no zone reference anywhere in the local API:
 the event object has no zone field, its metadata does not mention zones, and
