@@ -5,7 +5,7 @@ All notable changes to this project are documented here. This project uses
 `custom_components/unifiprotect_zones/manifest.json` is what HACS and Home
 Assistant read.
 
-## Unreleased
+## 0.4.3
 
 ### Fixed
 
