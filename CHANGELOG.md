@@ -5,6 +5,16 @@ All notable changes to this project are documented here. This project uses
 `custom_components/unifiprotect_zones/manifest.json` is what HACS and Home
 Assistant read.
 
+## 0.4.4
+
+### Fixed
+
+- No zone activity was reported at all with the uiprotect release that ships
+  with current Home Assistant: it removed `get_event_smart_detect_track`, so
+  processing every event failed with an `AttributeError`. The track is now
+  fetched with `get_event_smart_detect_track_raw` and parsed by the
+  integration, with the old call still used where it exists.
+
 ## 0.4.3
 
 ### Fixed

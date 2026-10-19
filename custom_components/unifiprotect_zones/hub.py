@@ -382,6 +382,19 @@ class ProtectZoneHub:
             camera_id,
         )
 
+    async def _async_get_smart_detect_track(self, event_id: str) -> SmartDetectTrack:
+        """Fetch and parse one event's smart-detect track.
+
+        Newer uiprotect releases dropped ``get_event_smart_detect_track`` and
+        only kept the ``_raw`` variant, so the parsing happens here. A parse
+        failure raises a pydantic ``ValidationError``, which is a ``ValueError``.
+        """
+        get_track = getattr(self.api, "get_event_smart_detect_track", None)
+        if get_track is not None:
+            return await get_track(event_id)
+        data = await self.api.get_event_smart_detect_track_raw(event_id)
+        return SmartDetectTrack.from_unifi_dict(api=self.api, **data)
+
     async def _async_process_event(self, event: Event) -> None:
         camera = event.camera
         if camera is None:
@@ -389,8 +402,8 @@ class ProtectZoneHub:
             return
 
         try:
-            track = await self.api.get_event_smart_detect_track(event.id)
-        except (UnifiProtectError, aiohttp.ClientError, TimeoutError):
+            track = await self._async_get_smart_detect_track(event.id)
+        except (UnifiProtectError, aiohttp.ClientError, TimeoutError, ValueError):
             # The track 404s once Protect has expired it, and a network hiccup
             # on a single event must not bubble out of this task.
             _LOGGER.debug(
