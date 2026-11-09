@@ -5,6 +5,17 @@ All notable changes to this project are documented here. This project uses
 `custom_components/unifiprotect_zones/manifest.json` is what HACS and Home
 Assistant read.
 
+## 0.4.5
+
+### Fixed
+
+- The integration failed to load at all with the uiprotect release that ships
+  with Home Assistant 2026.11 (`cannot import name 'SmartMotionZone'`).
+  uiprotect no longer models a camera's Smart Detection Zones or an event's
+  smart-detect track, so both are now read from the raw Protect API. Zones
+  are re-read on every finished smart-detect event, which is also how zones
+  newly drawn in the Protect app get their entities.
+
 ## 0.4.4
 
 ### Fixed

@@ -16,7 +16,6 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 from uiprotect.data import Camera
-from uiprotect.data.devices import SmartMotionZone
 
 from .const import (
     CONF_AUTO_OFF_SECONDS,
@@ -31,6 +30,7 @@ from .entity import ProtectZoneEntity
 from .hub import (
     ProtectZoneHub,
     ProtectZonesConfigEntry,
+    SmartDetectZone,
     ZoneActivity,
     zone_object_types,
 )
@@ -59,7 +59,7 @@ async def async_setup_entry(
     @callback
     def _async_add_camera_zones(camera: Camera) -> None:
         entities: list[ProtectZoneObjectBinarySensor] = []
-        for zone in camera.smart_detect_zones:
+        for zone in hub.get_zones(camera.id):
             for object_type in (OBJECT_TYPE_ANY, *zone_object_types(zone)):
                 key = (camera.id, zone.id, object_type)
                 if key in known:
@@ -105,7 +105,7 @@ class ProtectZoneObjectBinarySensor(ProtectZoneEntity, BinarySensorEntity):
         self,
         hub: ProtectZoneHub,
         camera: Camera,
-        zone: SmartMotionZone,
+        zone: SmartDetectZone,
         object_type: str,
         auto_off_seconds: int,
     ) -> None:

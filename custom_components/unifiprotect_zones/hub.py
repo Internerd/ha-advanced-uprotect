@@ -20,7 +20,9 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 import logging
+from typing import Any
 
 import aiohttp
 from homeassistant.config_entries import ConfigEntry
@@ -29,8 +31,6 @@ from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from uiprotect import ProtectApiClient
 from uiprotect.data import Camera, Event, EventType
-from uiprotect.data.devices import SmartMotionZone
-from uiprotect.data.nvr import SmartDetectTrack
 from uiprotect.data.websocket import WSAction, WSSubscriptionMessage
 from uiprotect.exceptions import UnifiProtectError
 
@@ -67,6 +67,57 @@ _TRACKED_EVENT_TYPES = {
 _MAX_PROCESSED_EVENTS = 256
 
 type ProtectZonesConfigEntry = ConfigEntry[ProtectZoneHub]
+
+
+@dataclass(frozen=True)
+class SmartDetectZone:
+    """One Smart Detection Zone drawn on a camera.
+
+    uiprotect stopped modelling these (and the smart-detect track below) in
+    its private-API camera model, so they are read from the raw API JSON.
+    """
+
+    id: int
+    name: str
+    object_types: tuple[str, ...] = ()
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> SmartDetectZone:
+        return cls(
+            id=int(data["id"]),
+            name=str(data.get("name") or f"zone-{data['id']}"),
+            object_types=tuple(
+                str(object_type) for object_type in data.get("objectTypes") or []
+            ),
+        )
+
+
+@dataclass(frozen=True)
+class TrackPoint:
+    """One frame of an event's smart-detect track."""
+
+    timestamp: datetime
+    object_type: str
+    zone_ids: tuple[int, ...] = ()
+    lines: tuple[int, ...] = ()
+    license_plate: str | None = None
+
+    @classmethod
+    def from_api(cls, data: dict[str, Any]) -> TrackPoint:
+        return cls(
+            timestamp=datetime.fromtimestamp(
+                int(data.get("timestamp") or 0) / 1000, tz=UTC
+            ),
+            object_type=str(data.get("objectType") or ""),
+            zone_ids=tuple(int(zone_id) for zone_id in data.get("zones") or []),
+            lines=tuple(int(line_id) for line_id in data.get("lines") or []),
+            license_plate=data.get("licensePlate"),
+        )
+
+
+def parse_track(data: dict[str, Any]) -> list[TrackPoint]:
+    """Turn the raw ``events/<id>/smartDetectTrack`` response into track points."""
+    return [TrackPoint.from_api(item) for item in data.get("payload") or []]
 
 
 @dataclass
@@ -119,22 +170,7 @@ class ZoneActivity:
         return self.zone_path[-1] if self.zone_path else None
 
 
-def camera_reports_zones(camera: Camera) -> bool:
-    """Whether this camera can produce zone activity at all.
-
-    A camera only gets entities once it has a Smart Detection Zone or can
-    cross lines. Both can appear after setup - drawing the *first* zone in
-    the Protect app is what turns a camera into one this integration has
-    anything to say about - so the platforms re-check this whenever zones
-    change, not just at startup.
-    """
-    return bool(
-        camera.smart_detect_zones
-        or getattr(camera.feature_flags, "has_line_crossing", False)
-    )
-
-
-def zone_object_types(zone: SmartMotionZone) -> list[str]:
+def zone_object_types(zone: SmartDetectZone) -> list[str]:
     """Return the object types worth creating an entity for in this zone.
 
     Protect stores which object types a zone actually detects. Honouring that
@@ -142,8 +178,7 @@ def zone_object_types(zone: SmartMotionZone) -> list[str]:
     explicit configuration gets the full set.
     """
     configured = {
-        normalize_object_type(object_type.value)
-        for object_type in zone.object_types or []
+        normalize_object_type(object_type) for object_type in zone.object_types
     }
     if not configured:
         return list(ZONE_OBJECT_TYPES)
@@ -178,14 +213,17 @@ def event_license_plates(event: Event) -> list[str]:
 
 
 def build_zone_activity(
-    event: Event, camera: Camera, track: SmartDetectTrack
+    event: Event,
+    camera_id: str,
+    zones: list[SmartDetectZone],
+    track: list[TrackPoint],
 ) -> ZoneActivity | None:
     """Turn one event's smart-detect track into a :class:`ZoneActivity`.
 
     Returns ``None`` when the track never touched a zone or a crossing line,
     which is everything this integration has nothing to say about.
     """
-    zone_names = {zone.id: zone.name for zone in camera.smart_detect_zones}
+    zone_names = {zone.id: zone.name for zone in zones}
 
     zone_path: list[str] = []
     zones: list[str] = []
@@ -194,8 +232,8 @@ def build_zone_activity(
     object_types: list[str] = []
     detections: dict[int, ZoneDetection] = {}
 
-    for item in sorted(track.payload, key=lambda item: item.timestamp):
-        item_type = normalize_object_type(item.object_type.value)
+    for item in sorted(track, key=lambda item: item.timestamp):
+        item_type = normalize_object_type(item.object_type)
         if item_type not in object_types:
             object_types.append(item_type)
 
@@ -230,7 +268,7 @@ def build_zone_activity(
                 if plate not in detection.license_plates:
                     detection.license_plates.append(plate)
 
-        for line_id in item.lines or []:
+        for line_id in item.lines:
             # Protect does not expose crossing-line names anywhere in the
             # local API, so the id is all there is to report.
             name = f"line-{line_id}"
@@ -269,7 +307,7 @@ def build_zone_activity(
 
     return ZoneActivity(
         event_id=event.id,
-        camera_id=camera.id,
+        camera_id=camera_id,
         object_type=object_types[0] if object_types else None,
         object_types=object_types,
         score=event.score,
@@ -314,6 +352,21 @@ class ProtectZoneHub:
         # metadata) and every update arrives here again; only a plate that
         # Protect attaches to the event late is worth another pass.
         self._processed_events: OrderedDict[str, tuple[str, ...]] = OrderedDict()
+        # Camera id -> its Smart Detection Zones and whether it can cross
+        # lines, read from the raw camera JSON (see `SmartDetectZone`).
+        self._zones: dict[str, list[SmartDetectZone]] = {}
+        self._line_crossing: dict[str, bool] = {}
+
+    def camera_reports_zones(self, camera_id: str) -> bool:
+        """Whether this camera can produce zone activity at all.
+
+        A camera only gets entities once it has a Smart Detection Zone or can
+        cross lines. Both can appear after setup - drawing the *first* zone in
+        the Protect app is what turns a camera into one this integration has
+        anything to say about - so the platforms re-check this whenever zones
+        change, not just at startup.
+        """
+        return bool(self._zones.get(camera_id) or self._line_crossing.get(camera_id))
 
     @property
     def cameras(self) -> list[Camera]:
@@ -321,16 +374,22 @@ class ProtectZoneHub:
         return [
             camera
             for camera in self.api.bootstrap.cameras.values()
-            if camera_reports_zones(camera)
+            if self.camera_reports_zones(camera.id)
         ]
 
     def get_camera(self, camera_id: str) -> Camera | None:
         """Look up a camera in the current bootstrap."""
         return self.api.bootstrap.cameras.get(camera_id)
 
+    def get_zones(self, camera_id: str) -> list[SmartDetectZone]:
+        """The Smart Detection Zones last read for this camera."""
+        return self._zones.get(camera_id, [])
+
     async def async_connect(self) -> None:
-        """Log in, load the bootstrap and start the realtime websocket."""
+        """Log in, load the bootstrap and zones and start the realtime websocket."""
         await self.api.update()
+        for data in await self.api.api_request_list("cameras"):
+            self._store_camera_zones(data)
         self._unsub_ws = self.api.subscribe_websocket(self._handle_ws_message)
 
     async def async_disconnect(self) -> None:
@@ -339,20 +398,41 @@ class ProtectZoneHub:
             self._unsub_ws = None
         await self.api.async_disconnect_ws()
 
+    def _store_camera_zones(self, data: dict[str, Any]) -> None:
+        """Remember the zones and line-crossing support from raw camera JSON."""
+        camera_id = data.get("id")
+        if not camera_id:
+            return
+        zones: list[SmartDetectZone] = []
+        for zone in data.get("smartDetectZones") or []:
+            try:
+                zones.append(SmartDetectZone.from_api(zone))
+            except (KeyError, TypeError, ValueError):
+                _LOGGER.debug(
+                    "Skipping unreadable zone on camera %s: %s", camera_id, zone
+                )
+        self._zones[camera_id] = zones
+        self._line_crossing[camera_id] = bool(
+            (data.get("featureFlags") or {}).get("hasLineCrossing")
+        )
+
+    async def _async_refresh_camera_zones(self, camera_id: str) -> None:
+        """Re-read one camera's zones; keep the last known ones on failure."""
+        try:
+            data = await self.api.api_request_obj(f"cameras/{camera_id}")
+        except (UnifiProtectError, aiohttp.ClientError, TimeoutError):
+            _LOGGER.debug(
+                "Could not refresh zones of camera %s", camera_id, exc_info=True
+            )
+            return
+        self._store_camera_zones(data)
+
     def _handle_ws_message(self, message: WSSubscriptionMessage) -> None:
         """Filter the realtime feed down to finished smart-detect events."""
         if message.action not in (WSAction.ADD, WSAction.UPDATE):
             return
 
         new_obj = message.new_obj
-
-        if isinstance(new_obj, Camera):
-            # Zones added in the Protect app show up as a camera update; tell
-            # the platforms so they can create the matching entities.
-            if "smart_detect_zones" in (message.changed_data or {}):
-                self._async_notify_zones_updated(new_obj.id)
-            return
-
         if not isinstance(new_obj, Event):
             return
         if new_obj.type not in _TRACKED_EVENT_TYPES:
@@ -382,30 +462,27 @@ class ProtectZoneHub:
             camera_id,
         )
 
-    async def _async_get_smart_detect_track(self, event_id: str) -> SmartDetectTrack:
-        """Fetch and parse one event's smart-detect track.
-
-        Newer uiprotect releases dropped ``get_event_smart_detect_track`` and
-        only kept the ``_raw`` variant, so the parsing happens here. A parse
-        failure raises a pydantic ``ValidationError``, which is a ``ValueError``.
-        """
-        get_track = getattr(self.api, "get_event_smart_detect_track", None)
-        if get_track is not None:
-            return await get_track(event_id)
-        data = await self.api.get_event_smart_detect_track_raw(event_id)
-        return SmartDetectTrack.from_unifi_dict(api=self.api, **data)
-
     async def _async_process_event(self, event: Event) -> None:
-        camera = event.camera
-        if camera is None:
+        camera_id = event.camera_id
+        if camera_id is None or self.get_camera(camera_id) is None:
             _LOGGER.debug("Smart-detect event %s has no resolvable camera", event.id)
             return
 
         try:
-            track = await self._async_get_smart_detect_track(event.id)
-        except (UnifiProtectError, aiohttp.ClientError, TimeoutError, ValueError):
+            # Read through the raw call: uiprotect no longer models the track.
+            data = await self.api.api_request_obj(f"events/{event.id}/smartDetectTrack")
+            track = parse_track(data)
+        except (
+            UnifiProtectError,
+            aiohttp.ClientError,
+            TimeoutError,
+            KeyError,
+            TypeError,
+            ValueError,
+        ):
             # The track 404s once Protect has expired it, and a network hiccup
-            # on a single event must not bubble out of this task.
+            # or an unexpected payload on a single event must not bubble out of
+            # this task.
             _LOGGER.debug(
                 "Could not fetch smart-detect track for event %s",
                 event.id,
@@ -415,15 +492,19 @@ class ProtectZoneHub:
             self._processed_events.pop(event.id, None)
             return
 
-        activity = build_zone_activity(event, camera, track)
+        # Zones added in the Protect app are not announced on the websocket
+        # any more, so pick them up here, after the short-lived track.
+        await self._async_refresh_camera_zones(camera_id)
+        self._async_notify_zones_updated(camera_id)
+
+        activity = build_zone_activity(
+            event, camera_id, self.get_zones(camera_id), track
+        )
         if activity is None:
             return
 
-        # New zones may have been configured since the last event.
-        self._async_notify_zones_updated(camera.id)
-
         async_dispatcher_send(
             self.hass,
-            SIGNAL_ZONE_EVENT.format(entry_id=self.entry_id, camera_id=camera.id),
+            SIGNAL_ZONE_EVENT.format(entry_id=self.entry_id, camera_id=camera_id),
             activity,
         )

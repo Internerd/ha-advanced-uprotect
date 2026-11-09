@@ -16,7 +16,6 @@ from .hub import (
     ProtectZoneHub,
     ProtectZonesConfigEntry,
     ZoneActivity,
-    camera_reports_zones,
 )
 
 
@@ -36,7 +35,7 @@ async def async_setup_entry(
 
     @callback
     def _async_add_camera(camera: Camera) -> None:
-        if camera.id in known or not camera_reports_zones(camera):
+        if camera.id in known or not hub.camera_reports_zones(camera.id):
             return
         known.add(camera.id)
         async_add_entities([ProtectZoneEventEntity(hub, camera)])

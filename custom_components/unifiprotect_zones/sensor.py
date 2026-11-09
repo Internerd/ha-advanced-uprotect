@@ -11,15 +11,14 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 from uiprotect.data import Camera
-from uiprotect.data.devices import SmartMotionZone
 
 from .const import OBJECT_TYPE_LICENSE_PLATE, SIGNAL_ZONES_UPDATED
 from .entity import ProtectZoneEntity
 from .hub import (
     ProtectZoneHub,
     ProtectZonesConfigEntry,
+    SmartDetectZone,
     ZoneActivity,
-    camera_reports_zones,
     zone_object_types,
 )
 
@@ -46,7 +45,7 @@ async def async_setup_entry(
 
     @callback
     def _async_add_camera(camera: Camera) -> None:
-        if camera.id in known_cameras or not camera_reports_zones(camera):
+        if camera.id in known_cameras or not hub.camera_reports_zones(camera.id):
             return
         known_cameras.add(camera.id)
         async_add_entities(
@@ -59,7 +58,7 @@ async def async_setup_entry(
     @callback
     def _async_add_plate_zones(camera: Camera) -> None:
         entities: list[SensorEntity] = []
-        for zone in camera.smart_detect_zones:
+        for zone in hub.get_zones(camera.id):
             if OBJECT_TYPE_LICENSE_PLATE not in zone_object_types(zone):
                 continue
             key = (camera.id, zone.id)
@@ -211,7 +210,7 @@ class ProtectZonePlateSensor(ProtectZoneSensorBase):
     }
 
     def __init__(
-        self, hub: ProtectZoneHub, camera: Camera, zone: SmartMotionZone
+        self, hub: ProtectZoneHub, camera: Camera, zone: SmartDetectZone
     ) -> None:
         super().__init__(hub, camera)
         self._zone_id = zone.id
